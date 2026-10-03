@@ -83,6 +83,7 @@ mod document;
 #[cfg(feature = "display")]
 mod encode;
 mod error;
+mod expand;
 mod index;
 mod inline_table;
 mod item;
@@ -112,6 +113,7 @@ pub use crate::document::DocumentMut;
 pub type ImDocument<S> = Document<S>;
 pub use crate::document::Document;
 pub use crate::error::TomlError;
+pub use crate::expand::ExpandError;
 pub use crate::inline_table::{
     InlineEntry, InlineOccupiedEntry, InlineTable, InlineTableIntoIter, InlineTableIter,
     InlineTableIterMut, InlineVacantEntry,

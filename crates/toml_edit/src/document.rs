@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use crate::expand::{ExpandError, expand_path, validate_path};
+use crate::key::Key;
 use crate::table::Iter;
 use crate::{Item, RawString, Table};
 
@@ -189,6 +191,47 @@ impl DocumentMut {
     /// Whitespace after last element
     pub fn trailing(&self) -> &RawString {
         &self.trailing
+    }
+
+    /// Expands the selected inline tables into regular tables.
+    ///
+    /// This converts the inline table at each selected key path (and its
+    /// inline subtables) into regular tables. Values, key identity, and table
+    /// hierarchy are preserved. Unselected areas remain unchanged.
+    ///
+    /// # Supported scope
+    ///
+    /// - The path must exist and point to an inline table.
+    /// - Inline tables nested inside arrays are **not** supported and will
+    ///   cause an error.
+    /// - If any selected path is invalid, the entire batch is rejected
+    ///   atomically (no changes are made).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "parse")] {
+    /// # #[cfg(feature = "display")] {
+    /// use toml_edit::DocumentMut;
+    ///
+    /// let mut doc = "a = { b = { c = 1 }, d = 2 }\n".parse::<DocumentMut>().unwrap();
+    /// let paths: &[&[_]] = &[&["a".parse().unwrap()], &["a".parse().unwrap(), "b".parse().unwrap()]];
+    /// doc.expand_inline_tables(paths).unwrap();
+    /// assert_eq!(doc.to_string(), "[a]\nd = 2\n\n[a.b]\nc = 1\n");
+    /// # }
+    /// # }
+    /// ```
+    pub fn expand_inline_tables(&mut self, paths: &[&[Key]]) -> Result<(), ExpandError> {
+        // Validate all paths first so that an invalid path rejects the whole
+        // batch atomically.
+        for path in paths {
+            validate_path(self.as_table(), path)?;
+        }
+        // Expand each path.
+        for path in paths {
+            expand_path(self.as_table_mut(), path)?;
+        }
+        Ok(())
     }
 }
 
