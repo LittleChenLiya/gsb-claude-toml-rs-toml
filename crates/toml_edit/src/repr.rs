@@ -29,6 +29,11 @@ where
         self.repr = Some(repr);
     }
 
+    /// Set the logical value without changing the representation.
+    pub(crate) fn set_value(&mut self, value: T) {
+        self.value = value;
+    }
+
     /// The wrapped value
     pub fn value(&self) -> &T {
         &self.value

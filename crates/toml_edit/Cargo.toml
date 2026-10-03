@@ -88,5 +88,10 @@ name = "visit"
 required-features = ["parse", "display"]
 test = true
 
+[[example]]
+name = "integer_update"
+required-features = ["parse", "display"]
+test = true
+
 [lints]
 workspace = true

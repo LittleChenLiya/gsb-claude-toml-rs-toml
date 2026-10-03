@@ -92,6 +92,8 @@ mod parser;
 mod raw_string;
 mod repr;
 mod table;
+#[cfg(feature = "parse")]
+mod update;
 mod value;
 
 #[cfg(feature = "serde")]
@@ -122,6 +124,10 @@ pub use crate::raw_string::RawString;
 pub use crate::repr::{Decor, Formatted, Repr};
 pub use crate::table::{
     Entry, IntoIter, Iter, IterMut, OccupiedEntry, Table, TableLike, VacantEntry,
+};
+#[cfg(feature = "parse")]
+pub use crate::update::{
+    IntegerRadix, IntegerUpdate, UpdateError, UpdateOutcome, UpdateReport,
 };
 pub use crate::value::Value;
 pub use toml_datetime::*;

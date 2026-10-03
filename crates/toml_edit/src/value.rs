@@ -63,6 +63,14 @@ impl Value {
         }
     }
 
+    /// Casts `self` to mutable integer.
+    pub fn as_integer_mut(&mut self) -> Option<&mut Formatted<i64>> {
+        match self {
+            Self::Integer(value) => Some(value),
+            _ => None,
+        }
+    }
+
     /// Returns true if `self` is an integer.
     pub fn is_integer(&self) -> bool {
         self.as_integer().is_some()
