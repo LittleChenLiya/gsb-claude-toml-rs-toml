@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Features
+
+- Add `update_integers` / `update_document_integers` / `update_table_integers`
+  for atomic, format-preserving integer updates by full key path.  The new
+  value reuses the original radix (decimal/hex/octal/bin), sign convention and
+  underscore grouping while leaving whitespace, comments and other values
+  untouched.  Targets are validated for existence and integer type before any
+  mutation; values that cannot use the original base (e.g. negative hex) fall
+  back to a legal decimal literal and are reported in the returned report.
+
 ## [0.25.15] - 2026-09-11
 
 ### Performance

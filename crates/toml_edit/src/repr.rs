@@ -29,6 +29,10 @@ where
         self.repr = Some(repr);
     }
 
+    pub(crate) fn set_value_unchecked(&mut self, value: T) {
+        self.value = value;
+    }
+
     /// The wrapped value
     pub fn value(&self) -> &T {
         &self.value
