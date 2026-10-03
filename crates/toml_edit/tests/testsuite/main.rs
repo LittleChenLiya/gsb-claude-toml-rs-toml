@@ -2,3 +2,4 @@
 #![allow(clippy::dbg_macro)]
 
 mod edit;
+mod expand;

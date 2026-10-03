@@ -88,5 +88,11 @@ name = "visit"
 required-features = ["parse", "display"]
 test = true
 
+[[example]]
+name = "expand_inline"
+required-features = ["parse", "display"]
+test = true
+
 [lints]
 workspace = true
+
