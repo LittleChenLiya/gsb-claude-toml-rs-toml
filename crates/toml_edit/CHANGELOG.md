@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Features
+
+- Add `ConversionPlan` for faithful, plan-based conversion between explicit `Table` and `InlineTable` forms, preserving value identity, dotted key paths, and comment attribution, rejecting constructions that cannot be converted losslessly
+
 ## [0.25.15] - 2026-09-11
 
 ### Performance

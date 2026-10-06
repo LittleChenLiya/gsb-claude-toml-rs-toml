@@ -79,6 +79,7 @@
 
 mod array;
 mod array_of_tables;
+mod convert;
 mod document;
 #[cfg(feature = "display")]
 mod encode;
@@ -106,6 +107,7 @@ pub use crate::array::{Array, ArrayIntoIter, ArrayIter, ArrayIterMut};
 pub use crate::array_of_tables::{
     ArrayOfTables, ArrayOfTablesIntoIter, ArrayOfTablesIter, ArrayOfTablesIterMut,
 };
+pub use crate::convert::{ConversionPlan, ConvertError};
 pub use crate::document::DocumentMut;
 /// Type representing a parsed TOML document
 #[deprecated(since = "0.23.0", note = "Replaced with `Document`")]
