@@ -1971,3 +1971,91 @@ fn array_of_tables_replace_out_of_bounds() {
     let t = Table::new();
     array.replace(0, t);
 }
+
+#[test]
+fn rename_key_bare_stays_bare() {
+    given("bare   =   1
+other = 2
+")
+    .running(|root| {
+        assert!(root.rename_key("bare", "still_bare"));
+    })
+    .produces_display(str![[r#"
+still_bare   =   1
+other = 2
+
+"#]]);
+}
+
+#[test]
+fn rename_key_literal_style_preserved() {
+    given("'literal key' = \"value\" # keep me
+")
+    .running(|root| {
+        assert!(root.rename_key("literal key", "renamed key"));
+        let (key, item) = root.get_key_value("renamed key").unwrap();
+        assert_eq!(key.display_repr(), "'renamed key'");
+        assert_eq!(item.as_str(), Some("value"));
+    })
+    .produces_display(str![[r#"
+'renamed key' = "value" # keep me
+
+"#]]);
+}
+
+#[test]
+fn rename_key_literal_with_squote_switches_style() {
+    given("'literal key' = \"value\" # keep me
+")
+    .running(|root| {
+        // `'` cannot appear in a literal-quoted key, so the style must switch
+        assert!(root.rename_key("literal key", "it's"));
+        let (key, item) = root.get_key_value("it's").unwrap();
+        assert_eq!(key.display_repr(), "\"it's\"");
+        assert_eq!(item.as_str(), Some("value"));
+    })
+    .produces_display(str![[r#"
+"it's" = "value" # keep me
+
+"#]]);
+}
+
+#[test]
+fn rename_key_basic_style_preserved() {
+    given("\"basic key\" = 1
+")
+    .running(|root| {
+        assert!(root.rename_key("basic key", "it's"));
+        let (key, _) = root.get_key_value("it's").unwrap();
+        assert_eq!(key.display_repr(), "\"it's\"");
+    })
+    .produces_display(str![[r#"
+"it's" = 1
+
+"#]]);
+}
+
+#[test]
+fn rename_key_conflict_leaves_document_untouched() {
+    let input = "bare = 1
+'other key' = 2
+";
+    let mut test = given(input);
+    test.running(|root| {
+        assert!(!root.rename_key("bare", "other key"));
+        assert!(!root.rename_key("missing", "new"));
+    });
+    assert_eq!(test.doc.to_string(), input);
+}
+
+#[test]
+fn key_fmt_regression() {
+    // Pre-existing interface: `fmt` resets a key to its default representation
+    let mut key = parse_key!("'hello'");
+    key.fmt();
+    assert_data_eq!(key.to_string(), str![["hello"]]);
+
+    let mut key = parse_key!("bare");
+    key.as_mut().fmt();
+    assert_data_eq!(key.to_string(), str![["bare"]]);
+}

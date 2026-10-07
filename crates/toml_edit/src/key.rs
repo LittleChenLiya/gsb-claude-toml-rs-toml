@@ -346,8 +346,62 @@ impl KeyMut<'_> {
     }
 
     /// Auto formats the key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "parse")] {
+    /// let mut key = "'hello'".parse::<toml_edit::Key>().unwrap();
+    /// key.as_mut().fmt();
+    /// assert_eq!(key.to_string(), "hello");
+    /// # }
+    /// ```
     pub fn fmt(&mut self) {
         self.key.fmt();
+    }
+
+    /// Rename the key, keeping the current quote style when the new name can
+    /// still be represented with it and switching to the default
+    /// representation only when it cannot.
+    ///
+    /// The key's decor is left untouched.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "parse")] {
+    /// let mut key = "'literal key'".parse::<toml_edit::Key>().unwrap();
+    /// key.as_mut().rename("renamed key");
+    /// assert_eq!(key.to_string(), "'renamed key'");
+    ///
+    /// // A literal-quoted key cannot contain `'`, so the style is switched
+    /// key.as_mut().rename("it's");
+    /// assert_eq!(key.to_string(), "\"it's\"");
+    ///
+    /// // Bare keys stay bare
+    /// let mut key = "bare".parse::<toml_edit::Key>().unwrap();
+    /// key.as_mut().rename("still_bare");
+    /// assert_eq!(key.to_string(), "still_bare");
+    /// # }
+    /// ```
+    #[cfg(feature = "display")]
+    pub fn rename(&mut self, new_name: &str) {
+        let builder = toml_writer::TomlKeyBuilder::new(new_name);
+        let raw = match self.key.as_repr().and_then(|r| r.as_raw().as_str()) {
+            Some(raw) if raw.starts_with('\'') => builder
+                .as_literal()
+                .unwrap_or_else(|| builder.as_default())
+                .to_toml_key(),
+            Some(raw) if raw.starts_with('"') => builder.as_basic().to_toml_key(),
+            Some(_) => builder
+                .as_unquoted()
+                .unwrap_or_else(|| builder.as_default())
+                .to_toml_key(),
+            None => builder.as_default().to_toml_key(),
+        };
+        self.key.key.clear();
+        self.key.key.push_str(new_name);
+        self.key.repr = Some(Repr::new_unchecked(raw));
     }
 }
 

@@ -468,6 +468,50 @@ impl Table {
         self.items.shift_remove_entry(key)
     }
 
+    /// Renames a key, keeping its position, [`Item`], and decor.
+    ///
+    /// The key's current quote style is kept when the new name can still be
+    /// represented with it and is switched to the default representation only
+    /// when it cannot (see [`KeyMut::rename`][crate::KeyMut::rename]).
+    ///
+    /// Returns `false`, leaving the table unchanged, when `old` is not
+    /// present or `new` already exists.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "parse")] {
+    /// let mut doc = "'old key' = 1\nnew = 2\n".parse::<toml_edit::DocumentMut>().unwrap();
+    ///
+    /// // `new` already exists: rejected before anything is modified
+    /// assert!(!doc.as_table_mut().rename_key("old key", "new"));
+    /// assert_eq!(doc.to_string(), "'old key' = 1\nnew = 2\n");
+    ///
+    /// assert!(doc.as_table_mut().rename_key("old key", "renamed key"));
+    /// assert_eq!(doc.to_string(), "'renamed key' = 1\nnew = 2\n");
+    /// # }
+    /// ```
+    #[cfg(feature = "display")]
+    pub fn rename_key(&mut self, old: &str, new: &str) -> bool {
+        if old == new {
+            return self.contains_key(old);
+        }
+        let Some((index, key, _)) = self.items.get_full(old) else {
+            return false;
+        };
+        if self.items.contains_key(new) {
+            return false;
+        }
+        let mut key = key.clone();
+        key.as_mut().rename(new);
+        let (_, item) = self
+            .items
+            .shift_remove_index(index)
+            .expect("index came from `get_full`");
+        self.items.shift_insert(index, key, item);
+        true
+    }
+
     /// Retains only the elements specified by the `keep` predicate.
     ///
     /// In other words, remove all pairs `(key, item)` for which
