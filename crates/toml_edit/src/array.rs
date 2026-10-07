@@ -19,6 +19,38 @@ pub struct Array {
     pub(crate) values: Vec<Item>,
 }
 
+/// Options for [`Array::remove_with`]
+///
+/// # Examples
+///
+/// ```rust
+/// let options = toml_edit::RemoveOptions::new().preserve_comments(true);
+/// ```
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct RemoveOptions {
+    preserve_comments: bool,
+}
+
+impl RemoveOptions {
+    /// Create options with the default behavior: a removed value's comments are removed
+    /// along with it
+    pub const fn new() -> Self {
+        Self {
+            preserve_comments: false,
+        }
+    }
+
+    /// Keep a removed value's standalone comments by moving them to the next value, or to
+    /// the end of the array when removing the last value
+    ///
+    /// Inline comments on the removed value's own line are always removed along with the
+    /// value.
+    pub const fn preserve_comments(mut self, yes: bool) -> Self {
+        self.preserve_comments = yes;
+        self
+    }
+}
+
 /// An owned iterator type over [`Array`]'s [`Value`]s
 pub type ArrayIntoIter = Box<dyn Iterator<Item = Value>>;
 /// An iterator type over [`Array`]'s [`Value`]s
@@ -310,6 +342,88 @@ impl Array {
         }
     }
 
+    /// Removes the value at the given index, controlling how its comments are handled with
+    /// [`RemoveOptions`].
+    ///
+    /// Unlike [`Array::remove`], an out-of-bounds `index` returns `None` and leaves the
+    /// array untouched.
+    ///
+    /// With the default options this behaves like [`Array::remove`].  With
+    /// [`RemoveOptions::preserve_comments`], comments are re-attributed as follows:
+    ///
+    /// - Standalone comments on the lines above the removed value move to the next value,
+    ///   or to the end of the array when removing the last value.
+    /// - An inline comment on the removed value's own line is removed along with the
+    ///   value, whether it was written before or after the separating comma.
+    /// - An inline comment sharing a line with the *previous* value stays with that value.
+    ///
+    /// All other values keep their existing formatting.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "parse")] {
+    /// let mut value = "[\n    # about one\n    1, # inline one\n    # about two\n    2, # inline two\n]"
+    ///     .parse::<toml_edit::Value>()
+    ///     .unwrap();
+    /// let array = value.as_array_mut().unwrap();
+    ///
+    /// let removed = array
+    ///     .remove_with(1, toml_edit::RemoveOptions::new().preserve_comments(true))
+    ///     .unwrap();
+    /// assert_eq!(removed.as_integer(), Some(2));
+    /// assert_eq!(array.to_string(), "[\n    # about one\n    1, # inline one\n    # about two\n]");
+    ///
+    /// // Out-of-bounds indices leave the array untouched
+    /// assert!(array.remove_with(10, toml_edit::RemoveOptions::new()).is_none());
+    /// # }
+    /// ```
+    pub fn remove_with(&mut self, index: usize, options: RemoveOptions) -> Option<Value> {
+        let item = self.values.get(index)?;
+        let value = match item {
+            Item::Value(v) => v,
+            x => panic!("non-value item {x:?} in an array"),
+        };
+        let mut comments = String::new();
+        if options.preserve_comments {
+            if let Some(prefix) = value.decor().prefix().and_then(RawString::as_str) {
+                comments = extract_preservable_comments(prefix);
+            }
+        }
+        let removed = match self.values.remove(index) {
+            Item::Value(v) => v,
+            x => panic!("non-value item {x:?} in an array"),
+        };
+        if options.preserve_comments {
+            // The text after the removed value's comma belongs to the removed value's
+            // line: an inline comment there is removed along with the value.
+            strip_inline_comment_head(self.following_decor_mut(index));
+            if !comments.is_empty() {
+                // Detached comments move to the next value, or to the end of the array
+                // when the last value was removed.
+                match self.following_decor_mut(index) {
+                    FollowingDecor::Prefix(decor) => {
+                        let mut prefix = comments;
+                        if let Some(existing) = decor.prefix().and_then(RawString::as_str) {
+                            trim_redundant_newline(&mut prefix, existing);
+                            prefix.push_str(existing);
+                        }
+                        decor.set_prefix(prefix);
+                    }
+                    FollowingDecor::Trailing(trailing) => {
+                        let mut new_trailing = comments;
+                        if let Some(existing) = trailing.as_str() {
+                            trim_redundant_newline(&mut new_trailing, existing);
+                            new_trailing.push_str(existing);
+                        }
+                        *trailing = RawString::from(new_trailing);
+                    }
+                }
+            }
+        }
+        Some(removed)
+    }
+
     /// Retains only the values specified by the `keep` predicate.
     ///
     /// In other words, remove all values for which `keep(&value)` returns `false`.
@@ -443,4 +557,102 @@ fn decorate_array(array: &mut Array) {
     // Since everything is now on the same line, remove trailing commas and whitespace.
     array.set_trailing_comma(false);
     array.set_trailing("");
+}
+
+/// The decor immediately after a removed array value: the next value's prefix, or the
+/// array's trailing when the last value was removed
+enum FollowingDecor<'a> {
+    Prefix(&'a mut Decor),
+    Trailing(&'a mut RawString),
+}
+
+impl Array {
+    fn following_decor_mut(&mut self, index: usize) -> FollowingDecor<'_> {
+        match self.values.get_mut(index).and_then(Item::as_value_mut) {
+            Some(next) => FollowingDecor::Prefix(next.decor_mut()),
+            None => FollowingDecor::Trailing(&mut self.trailing),
+        }
+    }
+}
+
+/// Extract the comments to keep from a removed value's prefix.
+///
+/// The result, when non-empty, is newline-terminated so it can be placed directly in front
+/// of the next value's prefix or the array's trailing.
+fn extract_preservable_comments(prefix: &str) -> String {
+    let newline = if prefix.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let mut comments = String::new();
+    let mut rest = prefix;
+    // The text up to the first newline shares a line with the previous value (or the
+    // opening bracket): a comment there belongs to that line and stays in place.
+    if let Some(end) = rest.find('\n') {
+        let head = &rest[..end];
+        if head.contains('#') {
+            comments.push_str(head);
+            comments.push('\n');
+        }
+        rest = &rest[end + 1..];
+    }
+    // Each later newline-terminated line that holds a comment is a standalone comment for
+    // the removed value and moves with it.  The final, unterminated fragment is the
+    // whitespace directly in front of the value and is dropped.
+    while let Some(end) = rest.find('\n') {
+        let line = &rest[..end];
+        rest = &rest[end + 1..];
+        if line.contains('#') {
+            if comments.is_empty() {
+                comments.push_str(newline);
+            }
+            comments.push_str(line);
+            comments.push('\n');
+        }
+    }
+    comments
+}
+
+/// Remove an inline comment (the text up to the first newline, when it holds a comment)
+/// from the decor following a removed value, as that comment shared the removed value's
+/// line.
+fn strip_inline_comment_head(following: FollowingDecor<'_>) {
+    let stripped = {
+        let raw = match &following {
+            FollowingDecor::Prefix(decor) => decor.prefix(),
+            FollowingDecor::Trailing(trailing) => Some(&**trailing),
+        };
+        let Some(Some(text)) = raw.map(RawString::as_str) else {
+            return;
+        };
+        let Some(newline) = text.find('\n') else {
+            return;
+        };
+        let head = &text[..newline];
+        if !head.contains('#') {
+            return;
+        }
+        text[newline..].to_string()
+    };
+    match following {
+        FollowingDecor::Prefix(decor) => decor.set_prefix(stripped),
+        FollowingDecor::Trailing(trailing) => *trailing = RawString::from(stripped),
+    }
+}
+
+/// Avoid a blank line when newline-terminated comments are placed in front of text that
+/// already starts with a newline.
+fn trim_redundant_newline(comments: &mut String, following: &str) {
+    if !comments.ends_with('\n') {
+        return;
+    }
+    if following.starts_with('\n') {
+        comments.pop();
+    } else if following.starts_with("\r\n") {
+        comments.pop();
+        if comments.ends_with('\r') {
+            comments.pop();
+        }
+    }
 }

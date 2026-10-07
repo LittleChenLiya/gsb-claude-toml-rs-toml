@@ -102,7 +102,7 @@ pub mod ser;
 pub mod visit;
 pub mod visit_mut;
 
-pub use crate::array::{Array, ArrayIntoIter, ArrayIter, ArrayIterMut};
+pub use crate::array::{Array, ArrayIntoIter, ArrayIter, ArrayIterMut, RemoveOptions};
 pub use crate::array_of_tables::{
     ArrayOfTables, ArrayOfTablesIntoIter, ArrayOfTablesIter, ArrayOfTablesIterMut,
 };

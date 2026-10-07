@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use snapbox::assert_data_eq;
 use snapbox::prelude::*;
 use snapbox::str;
-use toml_edit::{DocumentMut, Item, Key, Table, Value, array, table, value};
+use toml_edit::{DocumentMut, Item, Key, RemoveOptions, Table, Value, array, table, value};
 
 macro_rules! parse_key {
     ($s:expr) => {{
@@ -1282,6 +1282,141 @@ fn test_remove_from_array() {
 
         a = [1, 2, 3]
         b = []
+
+"#]]);
+}
+
+#[test]
+fn test_remove_from_array_preserving_comments_middle() {
+    given(
+        r#"a = [
+    # standalone for one
+    "one", # inline for one
+    # standalone for two
+    'two', # inline for two
+    # standalone for three
+    3, # inline for three
+]
+"#,
+    )
+    .running(|root| {
+        let a = root.get_mut("a").unwrap();
+        let a = as_array!(a);
+        let removed = a
+            .remove_with(1, RemoveOptions::new().preserve_comments(true))
+            .unwrap();
+        assert_eq!(removed.as_str(), Some("two"));
+        assert_eq!(a.len(), 2);
+    })
+    .produces_display(str![[r#"
+a = [
+    # standalone for one
+    "one", # inline for one
+    # standalone for two
+    # standalone for three
+    3, # inline for three
+]
+
+"#]]);
+}
+
+#[test]
+fn test_remove_from_array_preserving_comments_last() {
+    given(
+        r#"a = [
+    # standalone for one
+    "one", # inline for one
+    # standalone for two
+    'two', # inline for two
+    # standalone for three
+    3, # inline for three
+]
+"#,
+    )
+    .running(|root| {
+        let a = root.get_mut("a").unwrap();
+        let a = as_array!(a);
+        let removed = a
+            .remove_with(2, RemoveOptions::new().preserve_comments(true))
+            .unwrap();
+        assert_eq!(removed.as_integer(), Some(3));
+        assert_eq!(a.len(), 2);
+    })
+    .produces_display(str![[r#"
+a = [
+    # standalone for one
+    "one", # inline for one
+    # standalone for two
+    'two', # inline for two
+    # standalone for three
+]
+
+"#]]);
+}
+
+#[test]
+fn test_remove_from_array_preserving_comments_out_of_bounds() {
+    let input = r#"a = [
+    # standalone for one
+    "one", # inline for one
+    # standalone for two
+    'two', # inline for two
+    # standalone for three
+    3, # inline for three
+]
+"#;
+    given(input)
+        .running(|root| {
+            let a = root.get_mut("a").unwrap();
+            let a = as_array!(a);
+            assert!(
+                a.remove_with(3, RemoveOptions::new().preserve_comments(true))
+                    .is_none()
+            );
+            assert!(a.remove_with(usize::MAX, RemoveOptions::new()).is_none());
+            assert_eq!(a.len(), 3);
+        })
+        .produces_display(str![[r#"
+a = [
+    # standalone for one
+    "one", # inline for one
+    # standalone for two
+    'two', # inline for two
+    # standalone for three
+    3, # inline for three
+]
+
+"#]]);
+}
+
+#[test]
+fn test_remove_from_array_with_default_options() {
+    // Without `preserve_comments`, `remove_with` behaves like `remove`
+    given(
+        r#"a = [
+    # standalone for one
+    "one", # inline for one
+    # standalone for two
+    'two', # inline for two
+    # standalone for three
+    3, # inline for three
+]
+"#,
+    )
+    .running(|root| {
+        let a = root.get_mut("a").unwrap();
+        let a = as_array!(a);
+        let removed = a.remove_with(1, RemoveOptions::new()).unwrap();
+        assert_eq!(removed.as_str(), Some("two"));
+        assert_eq!(a.len(), 2);
+    })
+    .produces_display(str![[r#"
+a = [
+    # standalone for one
+    "one", # inline for two
+    # standalone for three
+    3, # inline for three
+]
 
 "#]]);
 }
