@@ -88,5 +88,14 @@ name = "visit"
 required-features = ["parse", "display"]
 test = true
 
+[[example]]
+name = "convert"
+required-features = ["parse", "display"]
+test = true
+
+[[test]]
+name = "convert"
+required-features = ["parse", "display", "serde"]
+
 [lints]
 workspace = true

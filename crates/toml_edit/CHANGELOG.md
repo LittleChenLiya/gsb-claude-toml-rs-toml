@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Features
+
+- Add `convert::ConvertPlan` for planning conversions of explicitly selected tables between explicit (`[table]`) and inline (`table = { ... }`) form, preserving values, migratable comments, and dotted-key paths while rejecting non-lossless constructs and overlapping selections
+
 ## [0.25.15] - 2026-09-11
 
 ### Performance
