@@ -1287,6 +1287,124 @@ fn test_remove_from_array() {
 }
 
 #[test]
+fn test_remove_from_array_preserving_comments_middle() {
+    given(
+        r#"a = [
+    1, # inline one
+    # about two
+    2, # inline two
+    'three', # inline three
+]
+"#,
+    )
+    .running(|root| {
+        let a = root.get_mut("a").unwrap();
+        let a = as_array!(a);
+        assert_eq!(a.len(), 3);
+        let removed = a.remove_preserving_comments(1).unwrap();
+        assert!(removed.is_integer());
+        assert_eq!(a.len(), 2);
+    })
+    .produces_display(str![[r#"
+a = [
+    1, # inline one
+    # about two
+    'three', # inline three
+]
+
+"#]]);
+}
+
+#[test]
+fn test_remove_from_array_preserving_comments_last() {
+    given(
+        r#"a = [
+    1, # inline one
+    2, # inline two
+    # about three
+    3, # inline three
+]
+"#,
+    )
+    .running(|root| {
+        let a = root.get_mut("a").unwrap();
+        let a = as_array!(a);
+        assert_eq!(a.len(), 3);
+        let removed = a.remove_preserving_comments(2).unwrap();
+        assert!(removed.is_integer());
+        assert_eq!(a.len(), 2);
+    })
+    .produces_display(str![[r#"
+a = [
+    1, # inline one
+    2, # inline two
+    # about three
+]
+
+"#]]);
+}
+
+#[test]
+fn test_remove_from_array_preserving_comments_out_of_bounds() {
+    let input = r#"a = [
+    1, # inline one
+    # about two
+    2, # inline two
+    3, # inline three
+]
+"#;
+    given(input)
+        .running(|root| {
+            let a = root.get_mut("a").unwrap();
+            let a = as_array!(a);
+            assert_eq!(a.len(), 3);
+            assert!(a.remove_preserving_comments(3).is_none());
+            assert_eq!(a.len(), 3);
+        })
+        .produces_display(str![[r#"
+a = [
+    1, # inline one
+    # about two
+    2, # inline two
+    3, # inline three
+]
+
+"#]]);
+    // The document is untouched by the out-of-bounds removal
+    let mut doc = input.parse::<DocumentMut>().unwrap();
+    let a = doc["a"].as_array_mut().unwrap();
+    assert!(a.remove_preserving_comments(usize::MAX).is_none());
+    assert_eq!(doc.to_string(), input);
+}
+
+#[test]
+fn test_remove_from_array_still_drops_comments() {
+    // The original `remove` interface is unchanged: comments go away with the value
+    given(
+        r#"a = [
+    1, # inline one
+    # about two
+    2, # inline two
+    3, # inline three
+]
+"#,
+    )
+    .running(|root| {
+        let a = root.get_mut("a").unwrap();
+        let a = as_array!(a);
+        assert!(a.remove(1).is_integer());
+        assert_eq!(a.len(), 2);
+    })
+    .produces_display(str![[r#"
+a = [
+    1, # inline two
+    3, # inline three
+]
+
+"#]]);
+}
+
+#[test]
 fn test_format_array() {
     given(
         r#"

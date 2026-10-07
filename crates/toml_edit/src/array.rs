@@ -310,6 +310,76 @@ impl Array {
         }
     }
 
+    /// Removes the value at the given index, preserving standalone comments.
+    ///
+    /// This behaves like [`Array::remove`], except that comments standing on
+    /// their own line(s) in front of the removed value are kept by moving
+    /// them in front of the next value or, when removing the last value, to
+    /// the end of the array.  An inline comment on the removed value's own
+    /// line is removed along with the value.  All other values keep their
+    /// formatting.
+    ///
+    /// Returns `None`, leaving the array untouched, if `index` is out of
+    /// bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "parse")] {
+    /// let mut value = "[\n    1, # first\n    # about 2\n    2,\n    3,\n]".parse::<toml_edit::Value>().unwrap();
+    /// let array = value.as_array_mut().unwrap();
+    ///
+    /// let removed = array.remove_preserving_comments(1).unwrap();
+    /// assert_eq!(removed.as_integer(), Some(2));
+    /// assert_eq!(
+    ///     array.to_string(),
+    ///     "[\n    1, # first\n    # about 2\n    3,\n]",
+    /// );
+    /// # }
+    /// ```
+    pub fn remove_preserving_comments(&mut self, index: usize) -> Option<Value> {
+        if index >= self.values.len() {
+            return None;
+        }
+        let removed = self.values.remove(index);
+        let value = match removed {
+            Item::Value(v) => v,
+            x => panic!("non-value item {x:?} in an array"),
+        };
+        // Standalone comments live on their own lines within the removed
+        // value's prefix decor; move them to the next value or, when removing
+        // the last value, to the end of the array.
+        let comments = value
+            .decor()
+            .prefix()
+            .and_then(RawString::as_str)
+            .and_then(standalone_comments);
+        // An inline comment after the removed value's comma is stored on the
+        // first line of the following decor; it goes away with the value.
+        if let Some(next) = self.values.get_mut(index).and_then(Item::as_value_mut) {
+            if let Some(prefix) = next.decor().prefix().and_then(RawString::as_str) {
+                let rest = strip_inline_comment(prefix);
+                if comments.is_some() || rest != prefix {
+                    let merged = match comments {
+                        Some(comments) => format!("{comments}{rest}"),
+                        None => rest.to_owned(),
+                    };
+                    next.decor_mut().set_prefix(merged);
+                }
+            }
+        } else if let Some(trailing) = self.trailing.as_str() {
+            let rest = strip_inline_comment(trailing);
+            if comments.is_some() || rest != trailing {
+                let merged = match comments {
+                    Some(comments) => format!("{comments}{rest}"),
+                    None => rest.to_owned(),
+                };
+                self.trailing = RawString::from(merged);
+            }
+        }
+        Some(value)
+    }
+
     /// Retains only the values specified by the `keep` predicate.
     ///
     /// In other words, remove all values for which `keep(&value)` returns `false`.
@@ -424,6 +494,37 @@ impl<'s> IntoIterator for &'s Array {
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
+}
+
+/// The standalone comment lines within a value's prefix decor, excluding the
+/// indentation of the value itself.
+///
+/// Returns `None` when the prefix holds no comments.
+fn standalone_comments(prefix: &str) -> Option<&str> {
+    // The text after the last newline is the removed value's own indentation;
+    // everything before it is whole comment or blank lines.
+    let lines = match prefix.rfind('\n') {
+        Some(i) => &prefix[..i],
+        None => prefix,
+    };
+    if lines.contains('#') {
+        Some(lines)
+    } else {
+        None
+    }
+}
+
+/// The decor with any comment on its first line removed.
+///
+/// The first decor line holds the trailing inline comment of the preceding
+/// (removed) value; the remaining lines belong to the following value and
+/// are kept as-is.
+fn strip_inline_comment(decor: &str) -> &str {
+    let (first, rest) = match decor.find('\n') {
+        Some(i) => (&decor[..i], &decor[i..]),
+        None => (decor, ""),
+    };
+    if first.contains('#') { rest } else { decor }
 }
 
 fn decorate_array(array: &mut Array) {
