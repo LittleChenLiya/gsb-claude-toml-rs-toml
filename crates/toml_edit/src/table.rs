@@ -468,6 +468,43 @@ impl Table {
         self.items.shift_remove_entry(key)
     }
 
+    /// Renames a key, keeping its value, position, and formatting
+    ///
+    /// The existing quote style is kept when the new name can be represented
+    /// with it; see [`Key::rename`].
+    ///
+    /// Returns `true` on success.  Returns `false`, leaving the table
+    /// unchanged, when `old` does not exist or `new` is already present.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "parse")] {
+    /// let mut doc = "'a b' = 1\nc = 2\n".parse::<toml_edit::DocumentMut>().unwrap();
+    /// assert!(doc.as_table_mut().rename_key("a b", "d"));
+    /// assert!(!doc.as_table_mut().rename_key("d", "c"));
+    /// assert_eq!(doc.to_string(), "'d' = 1\nc = 2\n");
+    /// # }
+    /// ```
+    #[cfg(feature = "display")]
+    pub fn rename_key(&mut self, old: &str, new: &str) -> bool {
+        if old == new {
+            return self.items.contains_key(old);
+        }
+        if self.items.contains_key(new) {
+            return false;
+        }
+        let Some(index) = self.items.get_index_of(old) else {
+            return false;
+        };
+        let Some((mut key, item)) = self.items.shift_remove_index(index) else {
+            return false;
+        };
+        key.rename(new);
+        self.items.shift_insert(index, key, item);
+        true
+    }
+
     /// Retains only the elements specified by the `keep` predicate.
     ///
     /// In other words, remove all pairs `(key, item)` for which

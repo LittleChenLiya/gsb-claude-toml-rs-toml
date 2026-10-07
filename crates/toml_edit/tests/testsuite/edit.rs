@@ -1971,3 +1971,65 @@ fn array_of_tables_replace_out_of_bounds() {
     let t = Table::new();
     array.replace(0, t);
 }
+
+#[test]
+fn rename_bare_key() {
+    given(
+        r#"# leading comment
+bare = "value" # trailing comment
+other = 1
+"#,
+    )
+    .running(|root| {
+        assert!(root.rename_key("bare", "renamed"));
+    })
+    .produces_display(str![[r#"
+# leading comment
+renamed = "value" # trailing comment
+other = 1
+
+"#]]);
+}
+
+#[test]
+fn rename_literal_key() {
+    given(
+        r#"'literal key'  =  "value"
+"#,
+    )
+    .running(|root| {
+        assert!(root.rename_key("literal key", "renamed key"));
+    })
+    .produces_display(str![[r#"
+'renamed key'  =  "value"
+
+"#]]);
+}
+
+#[test]
+fn rename_literal_key_to_name_with_single_quote() {
+    given(
+        r#"'literal key' = "value"
+"#,
+    )
+    .running(|root| {
+        assert!(root.rename_key("literal key", "it's"));
+    })
+    .produces_display(str![[r#"
+"it's" = "value"
+
+"#]]);
+}
+
+#[test]
+fn rename_key_conflict_leaves_document_unchanged() {
+    let input = r#"'literal key' = "value"
+bare = 1
+"#;
+    let mut test = given(input);
+    test.running(|root| {
+        assert!(!root.rename_key("literal key", "bare"));
+        assert!(!root.rename_key("missing", "renamed"));
+    });
+    assert_eq!(test.doc.to_string(), input);
+}

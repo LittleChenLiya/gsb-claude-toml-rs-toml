@@ -141,6 +141,49 @@ impl Key {
         }
     }
 
+    /// Rename the key, preserving the existing quote style when the new name
+    /// can be represented with it
+    ///
+    /// The surrounding whitespace ([`Decor`]) is left untouched.
+    ///
+    /// - A bare key stays bare when the new name is a valid bare key
+    /// - A literal (`'...'`) key stays literal unless the new name cannot be
+    ///   represented in a literal string
+    /// - A basic (`"..."`) key stays basic
+    ///
+    /// When the existing style cannot represent the new name, this falls back
+    /// to the [default representation][Key::default_repr].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "parse")] {
+    /// let mut key = "'literal key'".parse::<toml_edit::Key>().unwrap();
+    /// key.rename("renamed");
+    /// assert_eq!(key.to_string(), "'renamed'");
+    ///
+    /// let mut key = "'literal key'".parse::<toml_edit::Key>().unwrap();
+    /// key.rename("it's");
+    /// assert_eq!(key.to_string(), "\"it's\"");
+    /// # }
+    /// ```
+    #[cfg(feature = "display")]
+    pub fn rename(&mut self, new_name: &str) {
+        let builder = toml_writer::TomlKeyBuilder::new(new_name);
+        let raw = match self.repr.as_ref().and_then(|r| r.as_raw().as_str()) {
+            Some(raw) if raw.starts_with('\'') => builder.as_literal().map(|k| k.to_toml_key()),
+            Some(raw) if raw.starts_with('"') => Some(builder.as_basic().to_toml_key()),
+            Some(_) => builder.as_unquoted().map(|k| k.to_toml_key()),
+            None => None,
+        };
+        if self.repr.is_some() {
+            let raw = raw.unwrap_or_else(|| builder.as_default().to_toml_key());
+            self.repr = Some(Repr::new_unchecked(raw));
+        }
+        self.key.clear();
+        self.key.push_str(new_name);
+    }
+
     /// Auto formats the key.
     pub fn fmt(&mut self) {
         self.repr = None;
@@ -392,4 +435,77 @@ impl std::fmt::Display for KeyMut<'_> {
 #[cfg(feature = "display")]
 fn string_roundtrip() {
     Key::new("hello").to_string().parse::<Key>().unwrap();
+}
+
+#[test]
+#[cfg(feature = "parse")]
+#[cfg(feature = "display")]
+fn original_interface_regression() {
+    // `Key::new` keys have no repr and display with the default representation
+    let key = Key::new("bare");
+    assert!(key.as_repr().is_none());
+    assert_eq!(key.display_repr(), "bare");
+    let key = Key::new("not bare");
+    assert_eq!(key.display_repr(), "\"not bare\"");
+
+    // parsed keys keep their original representation
+    let key = "'literal key'".parse::<Key>().unwrap();
+    assert_eq!(key.get(), "literal key");
+    assert_eq!(key.display_repr(), "'literal key'");
+    let key = "\"basic key\"".parse::<Key>().unwrap();
+    assert_eq!(key.display_repr(), "\"basic key\"");
+}
+
+#[test]
+#[cfg(feature = "parse")]
+#[cfg(feature = "display")]
+fn rename_bare_key() {
+    let mut key = "bare".parse::<Key>().unwrap();
+    key.rename("renamed");
+    assert_eq!(key.get(), "renamed");
+    assert_eq!(key.to_string(), "renamed");
+
+    // a new name that cannot be bare switches to the default representation
+    let mut key = "bare".parse::<Key>().unwrap();
+    key.rename("not bare");
+    assert_eq!(key.to_string(), "\"not bare\"");
+}
+
+#[test]
+#[cfg(feature = "parse")]
+#[cfg(feature = "display")]
+fn rename_literal_key() {
+    let mut key = "'literal key'".parse::<Key>().unwrap();
+    key.rename("renamed key");
+    assert_eq!(key.get(), "renamed key");
+    assert_eq!(key.to_string(), "'renamed key'");
+
+    // a literal key cannot contain a single quote, switch quote style
+    let mut key = "'literal key'".parse::<Key>().unwrap();
+    key.rename("it's");
+    assert_eq!(key.get(), "it's");
+    assert_eq!(key.to_string(), "\"it's\"");
+}
+
+#[test]
+#[cfg(feature = "parse")]
+#[cfg(feature = "display")]
+fn rename_basic_key() {
+    let mut key = "\"basic key\"".parse::<Key>().unwrap();
+    key.rename("renamed");
+    assert_eq!(key.get(), "renamed");
+    assert_eq!(key.to_string(), "\"renamed\"");
+}
+
+#[test]
+#[cfg(feature = "display")]
+fn rename_key_without_repr() {
+    let mut key = Key::new("bare");
+    key.rename("renamed");
+    assert!(key.as_repr().is_none());
+    assert_eq!(key.to_string(), "renamed");
+
+    let mut key = Key::new("bare");
+    key.rename("not bare");
+    assert_eq!(key.to_string(), "\"not bare\"");
 }
